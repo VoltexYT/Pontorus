@@ -9,54 +9,15 @@
 
 namespace pontorus\command;
 
-use pontorus\command\defaults\BanCommand;
-use pontorus\command\defaults\BanIpCommand;
-use pontorus\command\defaults\BanListCommand;
-use pontorus\command\defaults\BiomeCommand;
-use pontorus\command\defaults\CaveCommand;
-use pontorus\command\defaults\ChunkInfoCommand;
-use pontorus\command\defaults\DefaultGamemodeCommand;
-use pontorus\command\defaults\DeopCommand;
-use pontorus\command\defaults\DifficultyCommand;
-use pontorus\command\defaults\DumpMemoryCommand;
-use pontorus\command\defaults\EffectCommand;
-use pontorus\command\defaults\EnchantCommand;
-use pontorus\command\defaults\GamemodeCommand;
 use pontorus\command\defaults\GarbageCollectorCommand;
-use pontorus\command\defaults\GiveCommand;
 use pontorus\command\defaults\HelpCommand;
 use pontorus\command\defaults\KickCommand;
-use pontorus\command\defaults\KillCommand;
-use pontorus\command\defaults\ListCommand;
-use pontorus\command\defaults\LoadPluginCommand;
-use pontorus\command\defaults\LvdatCommand;
-use pontorus\command\defaults\MeCommand;
-use pontorus\command\defaults\OpCommand;
-use pontorus\command\defaults\PardonCommand;
-use pontorus\command\defaults\PardonIpCommand;
-use pontorus\command\defaults\ParticleCommand;
 use pontorus\command\defaults\PluginsCommand;
-use pontorus\command\defaults\ReloadCommand;
-use pontorus\command\defaults\SaveCommand;
-use pontorus\command\defaults\SaveOffCommand;
-use pontorus\command\defaults\SaveOnCommand;
-use pontorus\command\defaults\SayCommand;
-use pontorus\command\defaults\SeedCommand;
-use pontorus\command\defaults\SetBlockCommand;
-use pontorus\command\defaults\SetWorldSpawnCommand;
-use pontorus\command\defaults\SpawnpointCommand;
 use pontorus\command\defaults\StatusCommand;
 use pontorus\command\defaults\StopCommand;
-use pontorus\command\defaults\SummonCommand;
-use pontorus\command\defaults\TeleportCommand;
-use pontorus\command\defaults\TellCommand;
-use pontorus\command\defaults\TimeCommand;
 use pontorus\command\defaults\TimingsCommand;
 use pontorus\command\defaults\VanillaCommand;
 use pontorus\command\defaults\VersionCommand;
-use pontorus\command\defaults\WhitelistCommand;
-use pontorus\command\defaults\XpCommand;
-use pontorus\command\defaults\FillCommand;
 use pontorus\event\TranslationContainer;
 use pontorus\Player;
 use pontorus\Server;
@@ -65,13 +26,6 @@ use pontorus\utils\TextFormat;
 
 use pontorus\command\defaults\MakeServerCommand;
 use pontorus\command\defaults\ExtractPluginCommand;
-use pontorus\command\defaults\ExtractPharCommand;
-use pontorus\command\defaults\MakePluginCommand;
-use pontorus\command\defaults\BancidbynameCommand;
-use pontorus\command\defaults\BanipbynameCommand;
-use pontorus\command\defaults\BanCidCommand;
-use pontorus\command\defaults\PardonCidCommand;
-use pontorus\command\defaults\WeatherCommand;
 
 class SimpleCommandMap implements CommandMap{
 
