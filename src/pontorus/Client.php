@@ -1,0 +1,214 @@
+<?php
+
+/*____             _
+|  _ \ ___  _ __ | |_ ___  _ __ _   _ ___
+| |_) / _ \| '_ \| __/ _ \| '__| | | / __|
+|  __/ (_) | | | | || (_) | |  | |_| \__ \
+|_|   \___/|_| |_|\__\___/|_|   \__,_|___/
+ */
+
+namespace pontorus;
+
+use pontorus\event\client\ClientAuthEvent;
+use pontorus\event\client\ClientConnectEvent;
+use pontorus\event\client\ClientDisconnectEvent;
+use pontorus\event\client\ClientRecvPacketEvent;
+use pontorus\event\client\ClientSendPacketEvent;
+use pontorus\event\Timings;
+use pontorus\network\protocol\mcpe\GenericPacket;
+use pontorus\network\protocol\spp\ConnectPacket;
+use pontorus\network\protocol\spp\DataPacket;
+use pontorus\network\protocol\spp\DisconnectPacket;
+use pontorus\network\protocol\spp\Info;
+use pontorus\network\protocol\spp\InformationPacket;
+use pontorus\network\protocol\spp\RedirectPacket;
+use pontorus\network\protocol\spp\TransferPacket;
+use pontorus\network\pontorusInterface;
+
+class Client{
+	/** @var Server */
+	private $server;
+	/** @var pontorusInterface */
+	private $interface;
+	private $ip;
+	private $port;
+	/** @var Player[] */
+	private $players = [];
+	private $verified = false;
+	private $isMainServer = false;
+	private $maxPlayers;
+	private $lastUpdate;
+	private $description;
+
+	public function __construct(pontorusInterface $interface, $ip, int $port){
+		$this->server = $interface->getServer();
+		$this->interface = $interface;
+		$this->ip = $ip;
+		$this->port = $port;
+		$this->lastUpdate = microtime(true);
+
+		$this->server->getPluginManager()->callEvent(new ClientConnectEvent($this));
+	}
+
+	public function isMainServer() : bool{
+		return $this->isMainServer;
+	}
+
+	public function getMaxPlayers() : int{
+		return $this->maxPlayers;
+	}
+
+	public function getHash() : string{
+		return $this->ip . ':' . $this->port;
+	}
+
+	public function getDescription() : string {
+		return $this->description;
+	}
+
+	public function setDescription(string $description){
+		$this->description = $description;
+	}
+
+	public function onUpdate($currentTick){
+		if((microtime(true) - $this->lastUpdate) >= 30){//30 seconds timeout
+			$this->close("timeout");
+		}
+	}
+
+	public function handleDataPacket(DataPacket $packet){
+		/*$this->server->getPluginManager()->callEvent($ev = new ClientRecvPacketEvent($this, $packet));
+		if($ev->isCancelled()){
+			return;
+		}*/
+		$timings = Timings::getClientReceiveDataPacketTimings($packet);
+		$timings->startTiming();
+
+		switch($packet::NETWORK_ID){
+			case Info::HEARTBEAT_PACKET:
+				if(!$this->isVerified()){
+					$this->server->getLogger()->error("Client {$this->getIp()}:{$this->getPort()} is not verified");
+					return;
+				}
+				$this->lastUpdate = microtime(true);
+				$this->server->getLogger()->notice("Received Heartbeat Packet from {$this->getIp()}:{$this->getPort()}");
+
+				$pk = new InformationPacket();
+				$pk->type = InformationPacket::TYPE_CLIENT_DATA;
+				$pk->message = $this->server->getClientData();
+				$this->sendDataPacket($pk);
+
+				break;
+			case Info::CONNECT_PACKET:
+				/** @var ConnectPacket $packet */
+				if($packet->protocol != Info::CURRENT_PROTOCOL){
+					$this->close("Incompatible SPP version! Require SPP version: " . Info::CURRENT_PROTOCOL, true, DisconnectPacket::TYPE_WRONG_PROTOCOL);
+					return;
+				}
+				$pk = new InformationPacket();
+				$pk->type = InformationPacket::TYPE_LOGIN;
+				if($this->server->comparePassword($packet->password)){
+					$this->setVerified();
+					$pk->message = InformationPacket::INFO_LOGIN_SUCCESS;
+					$this->isMainServer = $packet->isMainServer;
+					$this->description = $packet->description;
+					$this->maxPlayers = $packet->maxPlayers;
+					$this->server->addClient($this);
+					$this->server->getLogger()->notice("Client {$this->getIp()}:{$this->getPort()} has connected successfully");
+					$this->server->getLogger()->notice("mainServer: " . ($this->isMainServer ? "true" : "false"));
+					$this->server->getLogger()->notice("description: $this->description");
+					$this->server->getLogger()->notice("maxPlayers: $this->maxPlayers");
+					$this->server->updateClientData();
+					$this->sendDataPacket($pk);
+				}else{
+					$pk->message = InformationPacket::INFO_LOGIN_FAILED;
+					$this->server->getLogger()->emergency("Client {$this->getIp()}:{$this->getPort()} tried to connect with wrong password!");
+					$this->sendDataPacket($pk);
+					$this->close("Auth failed!");
+				}
+				$this->server->getPluginManager()->callEvent(new ClientAuthEvent($this, $packet->password));
+				break;
+			case Info::DISCONNECT_PACKET:
+				/** @var DisconnectPacket $packet */
+				$this->close($packet->message, false);
+				break;
+			case Info::REDIRECT_PACKET:
+				/** @var RedirectPacket $packet */
+				if(isset($this->players[$uuid = $packet->uuid->toBinary()])){
+					$pk = new GenericPacket();
+					$pk->buffer = $packet->mcpeBuffer;
+					$this->players[$uuid]->sendDataPacket($pk, $packet->direct);
+				}/*else{
+					$this->server->getLogger()->error("Error RedirectPacket 0x" . bin2hex($packet->buffer));
+				}*/
+				break;
+			case Info::TRANSFER_PACKET:
+				/** @var TransferPacket $pk */
+				$clients = $this->server->getClients();
+				if(isset($this->players[$uuid = $packet->uuid->toBinary()]) and isset($clients[$packet->clientHash])){
+					$this->players[$uuid]->transfer($clients[$packet->clientHash], true);
+				}
+				break;
+			default:
+				$this->server->getLogger()->error("Client {$this->getIp()}:{$this->getPort()} send an unknown packet " . $packet::NETWORK_ID);
+		}
+		$timings->stopTiming();
+	}
+
+	public function sendDataPacket(DataPacket $pk){
+		$this->interface->putPacket($this, $pk);
+		/*$this->server->getPluginManager()->callEvent($ev = new ClientSendPacketEvent($this, $pk));
+		if(!$ev->isCancelled()){
+			$this->interface->putPacket($this, $pk);
+		}*/
+	}
+
+	public function getIp(){
+		return $this->ip;
+	}
+
+	public function getPort() : int{
+		return $this->port;
+	}
+
+	public function isVerified() : bool{
+		return $this->verified;
+	}
+
+	public function setVerified(){
+		$this->verified = true;
+	}
+
+	public function getPlayers(){
+		return $this->players;
+	}
+
+	public function addPlayer(Player $player){
+		$this->players[$player->getRawUUID()] = $player;
+	}
+
+	public function removePlayer(Player $player){
+		unset($this->players[$player->getRawUUID()]);
+	}
+
+	public function closeAllPlayers(){
+		foreach($this->players as $player){
+			$player->close("Server Closed");
+		}
+	}
+
+	public function close(string $reason = "Generic reason", bool $needPk = true, int $type = DisconnectPacket::TYPE_GENERIC){
+		$this->server->getPluginManager()->callEvent($ev = new ClientDisconnectEvent($this, $reason, $type));
+		$reason = $ev->getReason();
+		$this->server->getLogger()->info("Client $this->ip:$this->port has disconnected due to $reason");
+		if($needPk){
+			$pk = new DisconnectPacket();
+			$pk->type = $type;
+			$pk->message = $reason;
+			$this->sendDataPacket($pk);
+		}
+		$this->closeAllPlayers();
+		$this->interface->removeClient($this);
+		$this->server->removeClient($this);
+	}
+}
